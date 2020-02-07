@@ -6,6 +6,7 @@
 from knack.util import CLIError
 from azure.cli.core import get_default_cli
 import random
+import time
 
 
 SERVICE_MAP = {
@@ -40,10 +41,12 @@ def check_resource(service_list, resource_group):
 
 
 def deploy(service_list, resource_group):
+    start = time.monotonic()
     deployment_id = random.randint(0, 1000000)
     settings = {}
     for service in service_list:
         create_resource(service, resource_group, deployment_id, settings)
+    print('Complete in %d seconds' % (time.monotonic() - start))
 
 
 def get_resource_name(resource, deployment_id):
