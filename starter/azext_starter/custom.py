@@ -109,12 +109,15 @@ def create_resource(service, resource_group, deployment_id, settings):
             'webapp', 'config', 'appsettings', 'set',
             '--name', resource_name,
             '--resource-group', resource_group,
-            '--settings', ' '.join(['%s=%s' % (k, v) for k,v in settings.items()])
+            '--settings'
         ]
+        settings['PROJECT'] = 'samples/ChatRoom/ChatRoom.csproj'
+        for k, v in settings.items():
+            parameters.append('%s=%s' % (k, v))
         DEFAULT_CLI.invoke(parameters)
         # deploy sample code
-        url = 'https://github.com/eriolchan/sample'
-        print('Deploy sample code from %s' % url)
+        url = 'https://github.com/aspnet/AzureSignalR-samples'
+        print('Deploy sample code from %s/samples/ChatRoom' % url)
         parameters = [
             'webapp', 'deployment', 'source', 'config',
             '--name', resource_name,
