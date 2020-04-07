@@ -26,6 +26,7 @@ class StarterCommandsLoader(AzCommandsLoader):
 
     def load_command_table(self, _):
         with self.command_group('') as g:
+            # start()
             g.custom_command('starter', 'start')
         return self.command_table
 

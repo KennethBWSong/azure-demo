@@ -11,11 +11,14 @@ import time
 
 SERVICE_MAP = {
     'signalr': ('signalr', 'Azure SignalR Service', 1),
-    'webapp': ('webapp', 'Azure Web App Service', 2)
+    'storage': ('storage','Azure Storage Service', 2),
+    'webapp': ('webapp', 'Azure Web App Service', 3)
 }
 DEFAULT_CLI = get_default_cli()
 
 
+# serive: string, including the service names, seperated by space
+# resouce_group: name of resource group
 def start(service, resource_group=None):
     if not resource_group:
         raise CLIError('--resource-group not specified')
@@ -24,6 +27,7 @@ def start(service, resource_group=None):
     deploy(service_list, resource_group)
 
 
+# Check whether the serive is supported by checking in the SERVICE_MAP
 def validate(service):
     result = []
     for s in service.split():
@@ -33,6 +37,7 @@ def validate(service):
     return sorted(result, key=lambda x: x[2])
 
 
+# Check the status of service and resource group
 def check_resource(service_list, resource_group):
     print('Resource Group %s already exists.' % resource_group)
     print('Connecting %s in resource group %s.' % (', '.join([s[1] for s in service_list]), resource_group))
@@ -40,6 +45,7 @@ def check_resource(service_list, resource_group):
         print('No %s found.' % s[1])
 
 
+# Create and deploy the services
 def deploy(service_list, resource_group):
     start = time.monotonic()
     deployment_id = random.randint(0, 1000000)
@@ -53,6 +59,7 @@ def get_resource_name(resource, deployment_id):
     return '%s%d' % (resource.lower(), deployment_id)
 
 
+# Using DEFAULT_CLI.invoke() to send CLI commands
 def create_resource(service, resource_group, deployment_id, settings):
     if service[0] == 'signalr':
         # create SignalR resource
@@ -80,6 +87,70 @@ def create_resource(service, resource_group, deployment_id, settings):
         connection_string = DEFAULT_CLI.result.result
         settings['Azure:SignalR:ConnectionString'] = connection_string
         print('Connection string of %s: %s' % (resource_name, connection_string))
+
+    elif service[0] == 'storage':
+        # create a storage account
+        account_name = get_resource_name('myStorageAccount',deployment_id)
+        print('Create Storage Account: %s' % account_name)
+        parameters = [
+            'storage', 'account', 'create',
+            '--name', account_name,
+            '--resource-group', resource_group,
+            '--sku', 'Standard_LRS',
+            '--location', 'eastus',
+            '--kind', 'StorageV2',
+            '--access-tier', 'hot'
+        ]
+        if DEFAULT_CLI.invoke(parameters):
+            raise CLIError('Fail to create storage account %s' % account_name)
+        settings['AzureStorageConfig__AccountName'] = account_name
+        # account_name = 'mystorageaccount269507'
+
+        # get Storage connection string
+        # parameters = [
+        #     'storage', 'account', 'show-connection-string',
+        #     '--name', account_name,
+        #     '--resource-group', resource_group,
+        #     '--query', 'connectionString',
+        #     '--output', 'tsv'
+        # ]
+        # DEFAULT_CLI.invoke(parameters)
+        # connection_string = DEFAULT_CLI.result.result
+        # settings['STORAGE_CONNSTR'] = connection_string
+        # print('Connection string of %s: %s' % (account_name, connection_string))
+        # get Storage account key
+        parameters = [
+            'storage', 'account', 'keys', 'list',
+            '-n', account_name,
+            '-g', resource_group,
+            '--query', '[0].value',
+            '--output', 'tsv'
+        ]
+        DEFAULT_CLI.invoke(parameters)
+        account_key = DEFAULT_CLI.result.result
+        print('Account Key of %s: %s' % (account_name, account_key))
+        settings['AzureStorageConfig__AccountKey'] = account_key
+        # create storage container
+        parameters = [
+            'storage', 'container', 'create',
+            '-n', 'images',
+            '--account-name', account_name,
+            '--account-key', account_key,
+            '--public-access', 'off'
+        ]
+        DEFAULT_CLI.invoke(parameters)
+        settings['AzureStorageConfig__ImageContainer'] = 'images'
+        parameters = [
+            'storage', 'container', 'create',
+            '-n', 'thumbnails',
+            '--account-name', account_name,
+            '--account-key', account_key,
+            '--public-access', 'container'
+        ]
+        DEFAULT_CLI.invoke(parameters)
+        settings['AzureStorageConfig__ThumbnailContainer'] = 'thumbnails'
+
+    
     elif service[0] == 'webapp':
         # create App Service plan
         plan_name = get_resource_name('myAppService', deployment_id)
@@ -111,13 +182,14 @@ def create_resource(service, resource_group, deployment_id, settings):
             '--resource-group', resource_group,
             '--settings'
         ]
-        settings['PROJECT'] = 'samples/ChatRoom/ChatRoom.csproj'
+        # settings['PROJECT'] = 'samples/ChatRoom/ChatRoom.csproj'
         for k, v in settings.items():
             parameters.append('%s=%s' % (k, v))
         DEFAULT_CLI.invoke(parameters)
         # deploy sample code
-        url = 'https://github.com/aspnet/AzureSignalR-samples'
-        print('Deploy sample code from %s/samples/ChatRoom' % url)
+        # url = 'https://github.com/Azure-Samples/php-docs-hello-world'
+        url = 'https://github.com/Azure-Samples/storage-blob-upload-from-webapp'
+        print('Deploy sample code from %s' % url)
         parameters = [
             'webapp', 'deployment', 'source', 'config',
             '--name', resource_name,
