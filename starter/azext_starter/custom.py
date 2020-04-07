@@ -12,23 +12,36 @@ import time
 SERVICE_MAP = {
     'signalr': ('signalr', 'Azure SignalR Service', 1),
     'storage': ('storage','Azure Storage Service', 2),
-    'webapp': ('webapp', 'Azure Web App Service', 3)
+    'webapp': ('webapp', 'Azure Web App Service', 3),
+    'acr': ('acr', 'Azure Container Registry', 4),
+    'aks': ('aks', 'Azure Kubernetes Service', 5)
 }
 DEFAULT_CLI = get_default_cli()
 
 
 # serive: string, including the service names, seperated by space
 # resouce_group: name of resource group
-def start(service, webapp_name, storage_name, resource_group=None):
+def start(service, webapp_name = None, storage_name = None, aks_name = None, acr_name = None, resource_group=None):
+    print('Start')
     if not resource_group:
         raise CLIError('--resource-group not specified')
+    deployment_id = random.randint(0, 1000000)
+    if not webapp_name:
+        webapp_name = get_resource_name('myWebApp', deployment_id)
+    if not storage_name:
+        storage_name = get_resource_name('myStorage', deployment_id)
+    if not aks_name:
+        aks_name = get_resource_name('myAks', deployment_id)
+    if not acr_name:
+        aks_name = get_resource_name('myAcr', deployment_id)
     service_list = validate(service)
     check_resource(service_list, resource_group)
-    deploy(service_list, resource_group, webapp_name, storage_name)
+    deploy(service_list, resource_group, webapp_name, storage_name, aks_name, acr_name)
 
 
 # Check whether the serive is supported by checking in the SERVICE_MAP
 def validate(service):
+    print('Validate')
     result = []
     for s in service.split():
         if not s in SERVICE_MAP:
@@ -46,18 +59,20 @@ def check_resource(service_list, resource_group):
 
 
 # Create and deploy the services
-def deploy(service_list, resource_group, webapp_name, storage_name):
+def deploy(service_list, resource_group, webapp_name, storage_name, aks_name, acr_name):
     start = time.monotonic()
-    deployment_id = random.randint(0, 1000000)
+    print(start)
+    # deployment_id = random.randint(0, 1000000)
     settings = {}
     for service in service_list:
         if service[2] == 2:
             connectStorage(resource_group, settings, storage_name)
         elif service[2] == 3:
             connectWebApp(resource_group, settings, webapp_name)
+        elif service[2] == 5:
+            connectAKS(resource_group, acr_name, aks_name)
         # create_resource(service, resource_group, deployment_id, settings)
     print('Complete in %d seconds' % (time.monotonic() - start))
-
 
 def get_resource_name(resource, deployment_id):
     return '%s%d' % (resource.lower(), deployment_id)
@@ -79,6 +94,7 @@ def connectStorage(resource_group, settings, storage_name):
     settings['AzureStorageConfig__ImageContainer'] = 'images'
     settings['AzureStorageConfig__ThumbnailContainer'] = 'thumbnails'
 
+
 def connectWebApp(resource_group, settings, webapp_name):
     parameters = [
         'webapp', 'config', 'appsettings', 'set',
@@ -88,6 +104,27 @@ def connectWebApp(resource_group, settings, webapp_name):
     ]
     for k, v in settings.items():
         parameters.append('%s=%s' % (k, v))
+    DEFAULT_CLI.invoke(parameters)
+
+
+def createACR(resource_group, deployment_id):
+    resource_name = get_resource_name('myACR', deployment_id)
+    parameters = [
+        'acr', 'create', 
+        '--name', resource_name,
+        '--resource-group', resource_group,
+        '--sku', 'Basic'
+    ]
+    DEFAULT_CLI.invoke(parameters)
+
+
+def connectAKS(resource_group, acr_name, aks_name):
+    parameters = [
+        'aks', 'update', 
+        '-n', aks_name,
+        '-g', resource_group,
+        '--attach-acr', acr_name
+    ]
     DEFAULT_CLI.invoke(parameters)
 
 # Using DEFAULT_CLI.invoke() to send CLI commands
