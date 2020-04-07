@@ -19,12 +19,12 @@ DEFAULT_CLI = get_default_cli()
 
 # serive: string, including the service names, seperated by space
 # resouce_group: name of resource group
-def start(service, resource_group=None):
+def start(service, webapp_name, storage_name, resource_group=None):
     if not resource_group:
         raise CLIError('--resource-group not specified')
     service_list = validate(service)
     check_resource(service_list, resource_group)
-    deploy(service_list, resource_group)
+    deploy(service_list, resource_group, webapp_name, storage_name)
 
 
 # Check whether the serive is supported by checking in the SERVICE_MAP
@@ -46,18 +46,49 @@ def check_resource(service_list, resource_group):
 
 
 # Create and deploy the services
-def deploy(service_list, resource_group):
+def deploy(service_list, resource_group, webapp_name, storage_name):
     start = time.monotonic()
     deployment_id = random.randint(0, 1000000)
     settings = {}
     for service in service_list:
-        create_resource(service, resource_group, deployment_id, settings)
+        if service[2] == 2:
+            connectStorage(resource_group, settings, storage_name)
+        elif service[2] == 3:
+            connectWebApp(resource_group, settings, webapp_name)
+        # create_resource(service, resource_group, deployment_id, settings)
     print('Complete in %d seconds' % (time.monotonic() - start))
 
 
 def get_resource_name(resource, deployment_id):
     return '%s%d' % (resource.lower(), deployment_id)
 
+
+def connectStorage(resource_group, settings, storage_name):
+    parameters = [
+        'storage', 'account', 'keys', 'list',
+        '-n', storage_name,
+        '-g', resource_group,
+        '--query', '[0].value',
+        '--output', 'tsv'
+    ]
+    DEFAULT_CLI.invoke(parameters)
+    storage_key = DEFAULT_CLI.result.result
+    print('Account Key of %s: %s' % (storage_name, storage_key))
+    settings['AzureStorageConfig__AccountName'] = storage_name
+    settings['AzureStorageConfig__AccountKey'] = storage_key
+    settings['AzureStorageConfig__ImageContainer'] = 'images'
+    settings['AzureStorageConfig__ThumbnailContainer'] = 'thumbnails'
+
+def connectWebApp(resource_group, settings, webapp_name):
+    parameters = [
+        'webapp', 'config', 'appsettings', 'set',
+        '--name', webapp_name,
+        '--resource-group', resource_group,
+        '--settings'
+    ]
+    for k, v in settings.items():
+        parameters.append('%s=%s' % (k, v))
+    DEFAULT_CLI.invoke(parameters)
 
 # Using DEFAULT_CLI.invoke() to send CLI commands
 def create_resource(service, resource_group, deployment_id, settings):
@@ -106,18 +137,6 @@ def create_resource(service, resource_group, deployment_id, settings):
         settings['AzureStorageConfig__AccountName'] = account_name
         # account_name = 'mystorageaccount269507'
 
-        # get Storage connection string
-        # parameters = [
-        #     'storage', 'account', 'show-connection-string',
-        #     '--name', account_name,
-        #     '--resource-group', resource_group,
-        #     '--query', 'connectionString',
-        #     '--output', 'tsv'
-        # ]
-        # DEFAULT_CLI.invoke(parameters)
-        # connection_string = DEFAULT_CLI.result.result
-        # settings['STORAGE_CONNSTR'] = connection_string
-        # print('Connection string of %s: %s' % (account_name, connection_string))
         # get Storage account key
         parameters = [
             'storage', 'account', 'keys', 'list',
@@ -150,7 +169,6 @@ def create_resource(service, resource_group, deployment_id, settings):
         DEFAULT_CLI.invoke(parameters)
         settings['AzureStorageConfig__ThumbnailContainer'] = 'thumbnails'
 
-    
     elif service[0] == 'webapp':
         # create App Service plan
         plan_name = get_resource_name('myAppService', deployment_id)

@@ -34,6 +34,8 @@ class StarterCommandsLoader(AzCommandsLoader):
         with self.argument_context('starter') as c:
             c.positional('service', help='Service you want to start, use space as delimiter for multiple services.')
             c.argument('resource_group', options_list=['--resource-group', '-g'], help='Resouce group to provision services.')
+            c.argument('webapp_name', options_list = ['--webapp-name'], help = 'Name of the webapp.')
+            c.argument('storage_name', options_list = ['--storage-name'], help = 'Name of the webapp.')
 
 
 COMMAND_LOADER_CLS = StarterCommandsLoader
